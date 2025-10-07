@@ -10,6 +10,9 @@ struct ContentView: View {
                 Button("Seleziona clip video") { showPicker = true }
                 if !selectedURLs.isEmpty {
                     Text("Clip selezionate: \(selectedURLs.count)")
+                    NavigationLink("Apri Editor") {
+                        EditorView(urls: selectedURLs)
+                    }
                 }
                 Spacer()
             }
