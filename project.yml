@@ -1,0 +1,19 @@
+name: SubEdit
+options:
+  deploymentTarget:
+    iOS: "15.0"
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: it.openai.SubEdit
+    SWIFT_VERSION: 5.9
+targets:
+  SubEdit:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+      - Resources
+    settings:
+      base:
+        INFOPLIST_FILE: Resources/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
