@@ -49,6 +49,8 @@ final class SpeechRecognizer {
             _ = task
         }
 
+        guard !segments.isEmpty else { throw SRSError.failed }
+
         // Converte i segmenti parola-per-parola in righe (caption) con regole semplici:
         // - nuova riga se c'è una pausa > newLineGap
         // - o se la riga supera lineMaxChars

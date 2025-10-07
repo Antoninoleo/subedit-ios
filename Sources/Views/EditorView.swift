@@ -37,7 +37,7 @@ struct EditorView: View {
                 Button("Unisci & Export con sottotitoli") {
                     Task { await mergeAndExport() }
                 }
-                .disabled(captions.isEmpty && urls.count == 0)
+                .disabled(captions.isEmpty || urls.isEmpty)
             }
 
             if let url = exportURL {
@@ -50,6 +50,7 @@ struct EditorView: View {
         .navigationTitle("Editor")
     }
 
+    @MainActor
     private func transcribeFirstClip() async {
         guard let first = urls.first else { return }
         status = "Estrazione audio…"
@@ -57,15 +58,14 @@ struct EditorView: View {
             let audio = try await AudioExtractor.extractM4A(from: first)
             status = "Trascrizione offline…"
             let caps = try await SpeechRecognizer.transcribeToCaptions(audioURL: audio)
-            await MainActor.run {
-                self.captions = caps
-                self.status = "Trascrizione completata (\(caps.count) righe)"
-            }
+            captions = caps
+            status = "Trascrizione completata (\(caps.count) righe)"
         } catch {
-            await MainActor.run { self.status = "Errore trascrizione: \(error.localizedDescription)" }
+            status = "Errore trascrizione: \(error.localizedDescription)"
         }
     }
 
+    @MainActor
     private func mergeAndExport() async {
         status = "Unione clip…"
         let assets = urls.map { AVURLAsset(url: $0) }
@@ -77,10 +77,10 @@ struct EditorView: View {
             VideoEditor.exportWithSubtitles(asset: comp, renderSize: natural, captions: captions) { url in
                 Task { @MainActor in
                     if let url = url {
-                        self.exportURL = url
-                        self.status = "Completato"
+                        exportURL = url
+                        status = "Completato"
                     } else {
-                        self.status = "Errore export"
+                        status = "Errore export"
                     }
                 }
             }

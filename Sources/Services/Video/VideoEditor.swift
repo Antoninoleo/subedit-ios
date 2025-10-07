@@ -33,7 +33,12 @@ enum VideoEditor {
                                     captions: [Caption],
                                     completion: @escaping (URL?) -> Void) {
         let composition = AVMutableComposition()
-        try? composition.insertTimeRange(CMTimeRange(start: .zero, duration: asset.duration), of: asset, at: .zero)
+        do {
+            try composition.insertTimeRange(CMTimeRange(start: .zero, duration: asset.duration), of: asset, at: .zero)
+        } catch {
+            completion(nil)
+            return
+        }
 
         // Impostiamo la video composition (30fps)
         let videoComp = AVMutableVideoComposition()
@@ -82,8 +87,8 @@ enum VideoEditor {
 
         // Istruzioni base (un'unica traccia video)
         let instr = AVMutableVideoCompositionInstruction()
-        instr.timeRange = CMTimeRange(start: .zero, duration: asset.duration)
-        if let vt = asset.tracks(withMediaType: .video).first {
+        instr.timeRange = CMTimeRange(start: .zero, duration: composition.duration)
+        if let vt = composition.tracks(withMediaType: .video).first {
             let layerInstr = AVMutableVideoCompositionLayerInstruction(assetTrack: vt)
             instr.layerInstructions = [layerInstr]
         }
