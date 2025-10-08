@@ -1,12 +1,18 @@
 import SwiftUI
-import AVFoundation
+import AVKit
+import UniformTypeIdentifiers
 
 @available(iOS 16.0, *)
 struct EditorView: View {
     let urls: [URL]
-    @State private var status: String = "Pronto"
-    @State private var captions: [Caption] = []
+
+    @State private var player = AVPlayer()
+    @State private var currentTime: Double = 0
+    @State private var segments: [SubtitleSegment] = []
     @State private var exportURL: URL?
+    @State private var showImporter = false
+    @State private var errorMsg: String?
+    @State private var observingToken: Any?
 
     var body: some View {
         VStack(spacing: 12) {
@@ -39,11 +45,11 @@ struct EditorView: View {
                 }
                 .buttonStyle(.borderedProminent)
 
-                Button("Unisci & Export con sottotitoli") {
-                    Task { await mergeAndExport() }
+                if let url = exportURL {
+                    ShareLink(item: url) { Label("Condividi SRT", systemImage: "square.and.arrow.up") }
                 }
-                .disabled(captions.isEmpty || urls.isEmpty)
             }
+            .padding(.vertical, 8)
 
             if let exportURL {
                 ShareLink(item: exportURL) {
@@ -57,8 +63,6 @@ struct EditorView: View {
                 .padding(.top, 8)
             }
         }
-        .padding()
-        .navigationTitle("Editor")
     }
 
     @MainActor
@@ -96,8 +100,41 @@ struct EditorView: View {
                     }
                 }
             }
-        } catch {
-            status = "Errore unione: \(error.localizedDescription)"
+        }
+    }
+
+    func addEmptyRow() {
+        let start = (segments.last?.end ?? 0)
+        segments.append(SubtitleSegment(start: start, end: start + 2, text: "Nuovo sottotitolo"))
+    }
+
+    func exportSRT() throws -> URL {
+        let srt = segments.sorted { $0.start < $1.start }.toSRT()
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("captions.srt")
+        try srt.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+}
+
+// Campo “tempo in secondi”
+@available(iOS 16.0, *)
+struct TimeField: View {
+    let title: String
+    @Binding var seconds: Double
+
+    private let fmt: NumberFormatter = {
+        let f = NumberFormatter()
+        f.minimumFractionDigits = 0
+        f.maximumFractionDigits = 3
+        return f
+    }()
+
+    var body: some View {
+        HStack {
+            Text(title)
+            TextField("0.0", value: $seconds, formatter: fmt)
+                .keyboardType(.decimalPad)
+                .frame(width: 80)
         }
     }
 }
