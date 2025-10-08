@@ -15,41 +15,35 @@ struct EditorView: View {
     @State private var observingToken: Any?
 
     var body: some View {
-        VStack {
-            // PREVIEW con overlay dei sottotitoli
-            ZStack(alignment: .bottom) {
-                VideoPlayer(player: player)
-                    .frame(height: 280)
-                    .onAppear { setupPlayer() }
-                    .onDisappear { if let t = observingToken { player.removeTimeObserver(t) } }
+        VStack(spacing: 12) {
+            Text(status)
+                .font(.footnote)
 
-                if let cap = activeCaption {
-                    Text(cap.text)
-                        .font(.title2.bold())
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(.black.opacity(0.6))
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .padding(.bottom, 24)
-                        .transition(cap.animation.transition)
-                        .id(cap.id)
+            List {
+                Section("Clip selezionate") {
+                    ForEach(urls, id: \.self) { url in
+                        Text(url.lastPathComponent)
+                            .lineLimit(1)
+                    }
+                }
+
+                if !captions.isEmpty {
+                    Section("Sottotitoli") {
+                        Text("Righe generate: \(captions.count)")
+                        ForEach(Array(captions.prefix(3))) { caption in
+                            Text("• \(caption.text)")
+                                .lineLimit(2)
+                        }
+                    }
                 }
             }
+            .frame(height: 260)
 
-            // COMANDI RAPIDI
-            HStack(spacing: 12) {
-                Button {
-                    showImporter = true
-                } label: {
-                    Label("Importa SRT", systemImage: "tray.and.arrow.down")
+            HStack {
+                Button("Trascrivi offline (clip 1)") {
+                    Task { await transcribeFirstClip() }
                 }
-
-                Button {
-                    do { exportURL = try exportSRT() } catch { errorMsg = error.localizedDescription }
-                } label: {
-                    Label("Esporta SRT", systemImage: "arrow.up.doc")
-                }
+                .buttonStyle(.borderedProminent)
 
                 if let url = exportURL {
                     ShareLink(item: url) { Label("Condividi SRT", systemImage: "square.and.arrow.up") }
@@ -57,63 +51,54 @@ struct EditorView: View {
             }
             .padding(.vertical, 8)
 
-            // LISTA SOTOTOTITOLI
-            List {
-                ForEach($segments) { $seg in
-                    VStack(alignment: .leading, spacing: 8) {
-                        TextField("Testo", text: $seg.text, axis: .vertical)
-                        HStack {
-                            TimeField(title: "Start", seconds: $seg.start)
-                            TimeField(title: "End", seconds: $seg.end)
-                            Picker("", selection: $seg.animation) {
-                                ForEach(CaptionAnimation.allCases, id: \.self) { Text($0.rawValue) }
-                            }
-                            .pickerStyle(.menu)
-                        }
+            if let exportURL {
+                ShareLink(item: exportURL) {
+                    Label("Condividi export", systemImage: "square.and.arrow.up")
+                }
+                .padding(.top, 8)
+            } else if let first = urls.first {
+                ShareLink(item: first) {
+                    Label("Condividi video", systemImage: "square.and.arrow.up")
+                }
+                .padding(.top, 8)
+            }
+        }
+    }
+
+    @MainActor
+    private func transcribeFirstClip() async {
+        guard let first = urls.first else { return }
+        status = "Estrazione audio…"
+        do {
+            let audio = try await AudioExtractor.extractM4A(from: first)
+            status = "Trascrizione offline…"
+            let newCaptions = try await SpeechRecognizer.transcribeToCaptions(audioURL: audio)
+            captions = newCaptions
+            status = "Trascrizione completata (\(newCaptions.count) righe)"
+        } catch {
+            status = "Errore trascrizione: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func mergeAndExport() async {
+        guard !urls.isEmpty else { return }
+        status = "Unione clip…"
+        let assets = urls.map { AVURLAsset(url: $0) }
+        do {
+            let composition = try VideoEditor.merge(clips: assets)
+            status = "Export con sottotitoli…"
+            let naturalSize = assets.first?.tracks(withMediaType: .video).first?.naturalSize
+                ?? CGSize(width: 1080, height: 1920)
+            VideoEditor.exportWithSubtitles(asset: composition, renderSize: naturalSize, captions: captions) { url in
+                Task { @MainActor in
+                    if let url {
+                        exportURL = url
+                        status = "Completato"
+                    } else {
+                        status = "Errore export"
                     }
                 }
-                .onDelete { segments.remove(atOffsets: $0) }
-            }
-        }
-        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.plainText]) { result in
-            switch result {
-            case .success(let url):
-                if let data = try? Data(contentsOf: url),
-                   let s = String(data: data, encoding: .utf8) {
-                    segments = [SubtitleSegment].fromSRT(s)
-                }
-            case .failure(let err):
-                errorMsg = err.localizedDescription
-            }
-        }
-        .alert("Errore", isPresented: Binding(get: { errorMsg != nil }, set: { if !$0 { errorMsg = nil } })) {
-            Button("OK", role: .cancel) { }
-        } message: { Text(errorMsg ?? "") }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button("Aggiungi riga") { addEmptyRow() }
-                    Button("Ordina per tempo") { segments.sort { $0.start < $1.start } }
-                    Button("Pulisci") { segments.removeAll() }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-            }
-        }
-    }
-
-    // MARK: - Helpers
-    var activeCaption: SubtitleSegment? {
-        segments.first(where: { $0.start <= currentTime && currentTime <= $0.end })
-    }
-
-    func setupPlayer() {
-        if let u = urls.first {
-            player.replaceCurrentItem(with: AVPlayerItem(url: u))
-            let interval = CMTime(seconds: 0.05, preferredTimescale: 600)
-            observingToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
-                currentTime = time.seconds
             }
         }
     }
