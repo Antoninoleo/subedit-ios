@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 
+@available(iOS 16.0, *)
 struct EditorView: View {
     let urls: [URL]
     @State private var status: String = "Pronto"
