@@ -41,11 +41,11 @@ struct EditorView: View {
                 .disabled(captions.isEmpty || urls.isEmpty)
             }
 
-           if #available(iOS 16.0, *) {
-    ShareLink("Condividi video", item: url).padding(.top, 8)
-            }
-
-            Spacer()
+           if let first = urls.first {
+    ShareLink(item: first) {
+        Label("Condividi video", systemImage: "square.and.arrow.up")
+    }
+    .padding(.top, 8)
         }
         .padding()
         .navigationTitle("Editor")
