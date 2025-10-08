@@ -65,6 +65,18 @@ struct EditorView: View {
                         player.removeTimeObserver(token)
                         observingToken = nil
                     }
+
+                if let cap = activeCaption {
+                    Text(cap.text)
+                        .font(.title2.bold())
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(.black.opacity(0.6))
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .padding(.bottom, 24)
+                        .transition(cap.animation.transition)
+                        .id(cap.id)
                 }
 
             if let cap = activeCaption {
