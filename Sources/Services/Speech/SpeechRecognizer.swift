@@ -30,7 +30,7 @@ final class SpeechRecognizer {
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: localeId)),
               recognizer.isAvailable else { throw SRSError.recognizerUnavailable }
 
-        let request = SFSpeechURLRecognitionRequest(audioURL)
+        let request = SFSpeechURLRecognitionRequest(url: audioURL)
         request.requiresOnDeviceRecognition = true // forza OFFLINE
 
         let asset = AVURLAsset(url: audioURL)
