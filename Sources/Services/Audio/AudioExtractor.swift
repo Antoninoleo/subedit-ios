@@ -7,7 +7,8 @@ enum AudioExtractor {
     /// Estrae l'audio in un file .m4a (AAC) a partire da un video.
     static func extractM4A(from videoURL: URL) async throws -> URL {
         let asset = AVURLAsset(url: videoURL)
-        guard !asset.tracks(withMediaType: .audio).isEmpty else { throw Error.noAudioTrack }
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        guard !audioTracks.isEmpty else { throw Error.noAudioTrack }
 
         guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
             throw Error.exportFailed
@@ -17,7 +18,8 @@ enum AudioExtractor {
         try? FileManager.default.removeItem(at: outURL)
         exporter.outputURL = outURL
         exporter.outputFileType = .m4a
-        exporter.timeRange = CMTimeRange(start: .zero, duration: asset.duration)
+        let duration = try await asset.load(.duration)
+        exporter.timeRange = CMTimeRange(start: .zero, duration: duration)
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             exporter.exportAsynchronously { continuation.resume() }

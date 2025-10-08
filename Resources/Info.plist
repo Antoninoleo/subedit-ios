@@ -5,9 +5,9 @@
   <key>CFBundleName</key><string>SubEdit</string>
   <key>UILaunchStoryboardName</key><string></string>
 
-  <key>NSMicrophoneUsageDescription</key>
-  <string>Serve per trascrivere l'audio dei video.</string>
   <key>NSSpeechRecognitionUsageDescription</key>
-  <string>Serve per generare sottotitoli automatici offline.</string>
+  <string>Servono per trascrivere l'audio del tuo video.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Necessaria se registri direttamente nell'app.</string>
 </dict>
 </plist>
