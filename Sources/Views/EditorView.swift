@@ -24,9 +24,20 @@ struct EditorView: View {
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.plainText]) { result in
             switch result {
             case .success(let url):
-                if let data = try? Data(contentsOf: url),
-                   let s = String(data: data, encoding: .utf8) {
+                guard url.startAccessingSecurityScopedResource() else {
+                    errorMsg = "Impossibile accedere al file selezionato."
+                    return
+                }
+                defer { url.stopAccessingSecurityScopedResource() }
+
+                do {
+                    let data = try Data(contentsOf: url)
+                    guard let s = String(data: data, encoding: .utf8) else {
+                        throw CocoaError(.fileReadCorruptFile)
+                    }
                     segments = [SubtitleSegment].fromSRT(s)
+                } catch {
+                    errorMsg = error.localizedDescription
                 }
             case .failure(let err):
                 errorMsg = err.localizedDescription
@@ -65,18 +76,6 @@ struct EditorView: View {
                         player.removeTimeObserver(token)
                         observingToken = nil
                     }
-
-                if let cap = activeCaption {
-                    Text(cap.text)
-                        .font(.title2.bold())
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(.black.opacity(0.6))
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .padding(.bottom, 24)
-                        .transition(cap.animation.transition)
-                        .id(cap.id)
                 }
 
             if let cap = activeCaption {
