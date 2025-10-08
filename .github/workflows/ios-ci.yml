@@ -1,4 +1,4 @@
-name: iOS CI
+name: iOS CI (simulator)
 
 on:
   push:
@@ -14,26 +14,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select latest stable Xcode
+      # Pin a Xcode 15.4 per evitare sorprese con l'ultima versione
+      - name: Use Xcode 15.4
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: "15.4"
 
       - name: Show Xcode version
         run: xcodebuild -version
 
       - name: Install XcodeGen
-        run: brew install xcodegen
+        run: |
+          brew update
+          brew install xcodegen
 
       - name: Generate Xcode project
-        run: xcodegen generate
+        run: xcodegen generate --use-cache
 
-      - name: Build (no code signing)
+      - name: List schemes (debug)
+        run: xcodebuild -list -project SubEdit.xcodeproj
+
+      # Build per SIMULATOR: niente firma richiesta
+      - name: Build for iOS Simulator (no signing)
         run: |
           xcodebuild \
             -project SubEdit.xcodeproj \
             -scheme SubEdit \
-            -configuration Release \
-            -sdk iphoneos \
-            CODE_SIGNING_ALLOWED=NO \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
             build
