@@ -41,8 +41,8 @@ struct EditorView: View {
                 .disabled(captions.isEmpty || urls.isEmpty)
             }
 
-            if let url = exportURL {
-                ShareLink("Condividi video", item: url).padding(.top, 8)
+           if #available(iOS 16.0, *) {
+    ShareLink("Condividi video", item: url).padding(.top, 8)
             }
 
             Spacer()
