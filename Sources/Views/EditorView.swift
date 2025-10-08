@@ -1,92 +1,155 @@
 import SwiftUI
-import AVFoundation
+import AVKit
+import UniformTypeIdentifiers
 
 @available(iOS 16.0, *)
 struct EditorView: View {
     let urls: [URL]
-    @State private var status: String = "Pronto"
-    @State private var captions: [Caption] = []
+
+    @State private var player = AVPlayer()
+    @State private var currentTime: Double = 0
+    @State private var segments: [SubtitleSegment] = []
     @State private var exportURL: URL?
+    @State private var showImporter = false
+    @State private var errorMsg: String?
+    @State private var observingToken: Any?
 
     var body: some View {
-        VStack(spacing: 12) {
-            Text(status).font(.footnote)
+        VStack {
+            // PREVIEW con overlay dei sottotitoli
+            ZStack(alignment: .bottom) {
+                VideoPlayer(player: player)
+                    .frame(height: 280)
+                    .onAppear { setupPlayer() }
+                    .onDisappear { if let t = observingToken { player.removeTimeObserver(t) } }
 
-            List {
-                Section("Clip selezionate") {
-                    ForEach(urls, id: \.self) { url in
-                        Text(url.lastPathComponent).lineLimit(1)
-                    }
+                if let cap = activeCaption {
+                    Text(cap.text)
+                        .font(.title2.bold())
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(.black.opacity(0.6))
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .padding(.bottom, 24)
+                        .transition(cap.animation.transition)
+                        .id(cap.id)
                 }
-                if !captions.isEmpty {
-                    Section("Sottotitoli") {
-                        Text("Righe generate: \(captions.count)")
-                        // Anteprima prime 3 righe
-                        ForEach(Array(captions.prefix(3))) { c in
-                            Text("• \(c.text)")
-                                .lineLimit(2)
+            }
+
+            // COMANDI RAPIDI
+            HStack(spacing: 12) {
+                Button {
+                    showImporter = true
+                } label: {
+                    Label("Importa SRT", systemImage: "tray.and.arrow.down")
+                }
+
+                Button {
+                    do { exportURL = try exportSRT() } catch { errorMsg = error.localizedDescription }
+                } label: {
+                    Label("Esporta SRT", systemImage: "arrow.up.doc")
+                }
+
+                if let url = exportURL {
+                    ShareLink(item: url) { Label("Condividi SRT", systemImage: "square.and.arrow.up") }
+                }
+            }
+            .padding(.vertical, 8)
+
+            // LISTA SOTOTOTITOLI
+            List {
+                ForEach($segments) { $seg in
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("Testo", text: $seg.text, axis: .vertical)
+                        HStack {
+                            TimeField(title: "Start", seconds: $seg.start)
+                            TimeField(title: "End", seconds: $seg.end)
+                            Picker("", selection: $seg.animation) {
+                                ForEach(CaptionAnimation.allCases, id: \.self) { Text($0.rawValue) }
+                            }
+                            .pickerStyle(.menu)
                         }
                     }
                 }
-            }.frame(height: 260)
-
-            HStack {
-                Button("Trascrivi offline (clip 1)") {
-                    Task { await transcribeFirstClip() }
-                }.buttonStyle(.borderedProminent)
-
-                Button("Unisci & Export con sottotitoli") {
-                    Task { await mergeAndExport() }
-                }
-                .disabled(captions.isEmpty || urls.isEmpty)
+                .onDelete { segments.remove(atOffsets: $0) }
             }
-
-           if let first = urls.first {
-    ShareLink(item: first) {
-        Label("Condividi video", systemImage: "square.and.arrow.up")
-    }
-    .padding(.top, 8)
         }
-        .padding()
-        .navigationTitle("Editor")
-    }
-
-    @MainActor
-    private func transcribeFirstClip() async {
-        guard let first = urls.first else { return }
-        status = "Estrazione audio…"
-        do {
-            let audio = try await AudioExtractor.extractM4A(from: first)
-            status = "Trascrizione offline…"
-            let caps = try await SpeechRecognizer.transcribeToCaptions(audioURL: audio)
-            captions = caps
-            status = "Trascrizione completata (\(caps.count) righe)"
-        } catch {
-            status = "Errore trascrizione: \(error.localizedDescription)"
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.plainText]) { result in
+            switch result {
+            case .success(let url):
+                if let data = try? Data(contentsOf: url),
+                   let s = String(data: data, encoding: .utf8) {
+                    segments = [SubtitleSegment].fromSRT(s)
+                }
+            case .failure(let err):
+                errorMsg = err.localizedDescription
+            }
+        }
+        .alert("Errore", isPresented: Binding(get: { errorMsg != nil }, set: { if !$0 { errorMsg = nil } })) {
+            Button("OK", role: .cancel) { }
+        } message: { Text(errorMsg ?? "") }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button("Aggiungi riga") { addEmptyRow() }
+                    Button("Ordina per tempo") { segments.sort { $0.start < $1.start } }
+                    Button("Pulisci") { segments.removeAll() }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
         }
     }
 
-    @MainActor
-    private func mergeAndExport() async {
-        status = "Unione clip…"
-        let assets = urls.map { AVURLAsset(url: $0) }
-        do {
-            let comp = try VideoEditor.merge(clips: assets)
-            status = "Export con sottotitoli…"
-            let natural = assets.first?.tracks(withMediaType: .video).first?.naturalSize
-                ?? CGSize(width: 1080, height: 1920)
-            VideoEditor.exportWithSubtitles(asset: comp, renderSize: natural, captions: captions) { url in
-                Task { @MainActor in
-                    if let url = url {
-                        exportURL = url
-                        status = "Completato"
-                    } else {
-                        status = "Errore export"
-                    }
-                }
+    // MARK: - Helpers
+    var activeCaption: SubtitleSegment? {
+        segments.first(where: { $0.start <= currentTime && currentTime <= $0.end })
+    }
+
+    func setupPlayer() {
+        if let u = urls.first {
+            player.replaceCurrentItem(with: AVPlayerItem(url: u))
+            let interval = CMTime(seconds: 0.05, preferredTimescale: 600)
+            observingToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
+                currentTime = time.seconds
             }
-        } catch {
-            status = "Errore unione: \(error.localizedDescription)"
+        }
+    }
+
+    func addEmptyRow() {
+        let start = (segments.last?.end ?? 0)
+        segments.append(SubtitleSegment(start: start, end: start + 2, text: "Nuovo sottotitolo"))
+    }
+
+    func exportSRT() throws -> URL {
+        let srt = segments.sorted { $0.start < $1.start }.toSRT()
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("captions.srt")
+        try srt.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+}
+
+// Campo “tempo in secondi”
+@available(iOS 16.0, *)
+struct TimeField: View {
+    let title: String
+    @Binding var seconds: Double
+
+    private let fmt: NumberFormatter = {
+        let f = NumberFormatter()
+        f.minimumFractionDigits = 0
+        f.maximumFractionDigits = 3
+        return f
+    }()
+
+    var body: some View {
+        HStack {
+            Text(title)
+            TextField("0.0", value: $seconds, formatter: fmt)
+                .keyboardType(.decimalPad)
+                .frame(width: 80)
         }
     }
 }
