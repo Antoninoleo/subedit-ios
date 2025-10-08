@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-public struct SubtitleSegment: Identifiable, Hashable, Codable {
+public struct SubtitleSegment: Identifiable, Hashable, Codable, Sendable {
     public var id = UUID()
     public var start: Double   // secondi
     public var end: Double
@@ -11,11 +11,11 @@ public struct SubtitleSegment: Identifiable, Hashable, Codable {
     public var duration: Double { max(0, end - start) }
 }
 
-public enum CaptionAnimation: String, CaseIterable, Codable, Hashable {
+public enum CaptionAnimation: String, CaseIterable, Codable, Hashable, Sendable {
     case fade, slideUp, pop
 }
 
-extension CaptionAnimation {
+public extension CaptionAnimation {
     var transition: AnyTransition {
         switch self {
         case .fade:    return .opacity
