@@ -1,7 +1,7 @@
 name: SubEdit
 options:
   deploymentTarget:
-    iOS: "15.0"
+    iOS: "16.0"
 settings:
   base:
     PRODUCT_BUNDLE_IDENTIFIER: it.tuonome.SubEdit
