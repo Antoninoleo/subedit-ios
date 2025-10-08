@@ -14,11 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Pin a Xcode 15.4 per evitare sorprese con l'ultima versione
-      - name: Use Xcode 15.4
+      # Pin a Xcode 16.0 per evitare sorprese con l'ultima versione
+      - name: Use Xcode 16.0
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "15.4"
+          xcode-version: "16.0"
 
       - name: Show Xcode version
         run: xcodebuild -version
