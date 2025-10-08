@@ -12,22 +12,36 @@ enum OfflineTranscriberError: LocalizedError {
 }
 
 final class OfflineTranscriber {
+    private var recognitionTask: SFSpeechRecognitionTask?
+
     func transcribeAudioFile(
         _ audioURL: URL,
         locale: Locale = Locale(identifier: "it-IT"),
         completion: @escaping (Result<[SubtitleSegment], Error>) -> Void
     ) {
-        SFSpeechRecognizer.requestAuthorization { status in
-            guard status == .authorized else { return completion(.failure(OfflineTranscriberError.notAuthorized)) }
+        SFSpeechRecognizer.requestAuthorization { [weak self] status in
+            guard let self = self else { return }
+            let deliver: (Result<[SubtitleSegment], Error>) -> Void = { result in
+                DispatchQueue.main.async {
+                    completion(result)
+                }
+            }
+
+            guard status == .authorized else { return deliver(.failure(OfflineTranscriberError.notAuthorized)) }
 
             guard let recognizer = SFSpeechRecognizer(locale: locale) else {
-                return completion(.failure(OfflineTranscriberError.recognizerUnavailable))
+                return deliver(.failure(OfflineTranscriberError.recognizerUnavailable))
             }
             let request = SFSpeechURLRecognitionRequest(url: audioURL)
             request.requiresOnDeviceRecognition = true    // <— offline
 
-            recognizer.recognitionTask(with: request) { result, error in
-                if let error = error { return completion(.failure(error)) }
+            self.recognitionTask?.cancel()
+            self.recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
+                guard let self = self else { return }
+                if let error = error {
+                    self.recognitionTask = nil
+                    return deliver(.failure(error))
+                }
                 guard let result = result, result.isFinal else { return }
 
                 let segs: [SubtitleSegment] = result.bestTranscription.segments.map {
@@ -37,7 +51,8 @@ final class OfflineTranscriber {
                         text: $0.substring.trimmingCharacters(in: .whitespacesAndNewlines)
                     )
                 }
-                completion(.success(segs))
+                self.recognitionTask = nil
+                deliver(.success(segs))
             }
         }
     }
